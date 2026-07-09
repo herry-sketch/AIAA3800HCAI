@@ -1,10 +1,247 @@
-# Slide & AOI System
+# Human-Centered AI Slide Learning Assistant
 
-这是 Human-Centered AI 学习辅助系统中的 Slide & AOI 模块。它负责把用户上传的 PDF 课件转换成结构化数据，包括 slide 图片、文本内容、AOI 区域，以及给 gaze 模块和 tutor 模块使用的接口输出。
+本项目是一个 Human-Centered AI 学习辅助系统。它不是四个孤立功能的拼接，而是围绕一个完整学习闭环设计：
 
-## 保留的有用代码
+```text
+课件内容结构化
+-> 摄像头理解用户视觉注意力和学习状态
+-> 语音理解用户学习意图
+-> 多模态融合确定用户想问的 slide 区域
+-> AI Tutor 生成可解释、可纠正、可适应的学习反馈
+```
 
-当前只保留 modular 版本：
+当前分支是 `member1`，负责其中的 **Slide & AOI 模块**。
+
+## 四人分工
+
+| 成员 | 模块 | 核心任务 |
+| --- | --- | --- |
+| 成员 1 | Slide & AOI | 课件解析、slide 渲染、OCR 文本提取、AOI 区域划分、AOI 手动修正 |
+| 成员 2 | Human Sensing | gaze/head pose、face detection、yawning、eye closure、learning-state signals |
+| 成员 3 | Voice & Multimodal Fusion | 语音转文字、intent 识别、指代消解、多模态融合、adaptive strategy |
+| 成员 4 | Tutor Agent & Integration | LLM Tutor、上下文检索、UI 集成、日志记录、实验评估 |
+
+## 完整系统流程
+
+### Step 1: 成员 1 输出 Slide 和 AOI
+
+成员 1 把 PDF slide 转换成系统可以理解的数据：
+
+```json
+{
+  "slide_id": 5,
+  "slide_image_path": "data/slide_images/slide_005.png",
+  "ocr_text": "This slide explains SHAP values...",
+  "aois": [
+    {
+      "aoi_id": "right_figure",
+      "bbox": [0.55, 0.18, 0.95, 0.78],
+      "type": "figure",
+      "text": "SHAP force plot"
+    }
+  ]
+}
+```
+
+传给：
+
+- 成员 2：用于 gaze 到 AOI 的映射。
+- 成员 4：用于 Tutor 上下文检索。
+
+### Step 2: 成员 2 输出 Gaze 和 Learning-State Signals
+
+成员 2 通过摄像头估计用户正在看哪里，并检测可观察学习状态信号。
+
+注意：系统不声称准确识别真实情绪或真实认知状态，只检测 observable learning-state signals。
+
+```json
+{
+  "gaze_prediction": {
+    "slide_id": 5,
+    "gaze_grid": "right_middle",
+    "predicted_aoi_id": "right_figure",
+    "confidence": 0.72,
+    "stable_duration_sec": 2.3
+  },
+  "learning_state": {
+    "face_detected": true,
+    "screen_facing_score": 0.86,
+    "yawn_detected": false,
+    "eyes_closed": false,
+    "fatigue_signal_score": 0.23,
+    "possible_review_needed": false
+  }
+}
+```
+
+传给：
+
+- 成员 3：用于多模态融合。
+- 成员 4：用于 UI 显示。
+
+### Step 3: 成员 3 输出 Resolved Query
+
+成员 3 理解用户说了什么，并结合 gaze、AOI 和 learning-state 判断用户真正想问哪个区域。
+
+例如用户看着右边图说“解释这个”，系统解析为：
+
+```json
+{
+  "query_id": "q_001",
+  "slide_id": 5,
+  "transcript": "解释这个",
+  "intent": "explain",
+  "resolved_aoi_id": "right_figure",
+  "target_confidence": 0.74,
+  "needs_confirmation": true,
+  "adaptive_strategy": "normal",
+  "evidence": [
+    "用户使用了指代词：这个",
+    "gaze_grid = right_middle",
+    "predicted_aoi = right_figure"
+  ],
+  "alternative_targets": [
+    {
+      "aoi_id": "right_figure",
+      "score": 0.74
+    },
+    {
+      "aoi_id": "bottom_caption",
+      "score": 0.51
+    }
+  ]
+}
+```
+
+传给：
+
+- 成员 4：用于生成 Tutor 回答。
+
+### Step 4: 成员 4 输出 Tutor Response
+
+成员 4 基于 slide context、resolved AOI、intent 和 adaptive strategy 生成回答。
+
+```json
+{
+  "query_id": "q_001",
+  "answer": "这个图展示的是 SHAP 如何解释模型预测结果...",
+  "active_recall_question": "如果一个特征的 SHAP value 为正，它通常表示什么？",
+  "adaptive_suggestion": null
+}
+```
+
+显示给用户。
+
+## 各成员接口设计
+
+### 成员 1: Slide & AOI
+
+负责文件：
+
+```text
+modules/slide/slide_parser.py
+modules/slide/aoi_manager.py
+modules/slide/ocr.py
+data/aoi_manifest.json
+data/slide_images/
+```
+
+对外接口：
+
+```python
+load_deck(pdf_path) -> deck_id
+render_slide(deck_id, slide_id) -> slide_image_path
+get_slide_aois(deck_id, slide_id) -> list[dict]
+get_slide_text(deck_id, slide_id) -> str
+update_aoi(deck_id, slide_id, aoi_id, bbox, aoi_type, text) -> dict
+```
+
+### 成员 2: Human Sensing
+
+计划负责文件：
+
+```text
+modules/human_sensing/webcam_capture.py
+modules/human_sensing/gaze_estimator.py
+modules/human_sensing/calibration.py
+modules/human_sensing/face_state_detector.py
+modules/human_sensing/learning_state_aggregator.py
+```
+
+计划接口：
+
+```python
+extract_face_landmarks(frame) -> FaceLandmarks
+estimate_head_pose(face_landmarks) -> HeadPose
+predict_gaze_grid(frame, calibration_profile) -> GazePrediction
+map_gaze_to_aoi(gaze_prediction, aois) -> AOIPrediction
+detect_learning_state(frame, face_landmarks, history) -> LearningState
+```
+
+### 成员 3: Voice & Multimodal Fusion
+
+计划负责文件：
+
+```text
+modules/interaction/speech_to_text.py
+modules/interaction/intent_parser.py
+modules/interaction/reference_resolver.py
+modules/interaction/adaptive_policy.py
+modules/interaction/interaction_history.py
+```
+
+计划接口：
+
+```python
+transcribe_audio(audio_path) -> Transcript
+parse_intent(transcript) -> IntentResult
+detect_deictic_reference(transcript) -> bool
+resolve_reference(intent_result, gaze_prediction, learning_state, aois, history) -> ResolvedQuery
+select_adaptive_strategy(learning_state, intent_result, history) -> AdaptiveStrategy
+```
+
+MVP intent 类型：
+
+```text
+explain
+compare
+quiz
+summarize
+simplify
+step_by_step
+review
+break
+```
+
+### 成员 4: Tutor Agent & System Integration
+
+计划负责文件：
+
+```text
+modules/tutor/context_retriever.py
+modules/tutor/llm_tutor.py
+modules/tutor/prompt_template.py
+modules/logging/interaction_logger.py
+app.py
+evaluation/eval_aoi_accuracy.py
+evaluation/eval_learning_state.py
+evaluation/eval_usability.py
+```
+
+计划接口：
+
+```python
+retrieve_context(deck_id, slide_id, resolved_aoi_id, history) -> TutorContext
+generate_tutor_response(tutor_context, intent, adaptive_strategy) -> TutorResponse
+log_interaction(event) -> None
+render_ui_state(slide, aois, gaze, learning_state, resolved_query, response) -> None
+```
+
+## 当前分支: member1 Slide & AOI 模块
+
+本分支已经实现成员 1 的 Slide & AOI 系统。
+
+### 当前保留代码
 
 ```text
 main_modular.py
@@ -13,29 +250,23 @@ modules/slide/slide_parser.py
 modules/slide/aoi_manager.py
 modules/slide/ocr.py
 README.md
+requirements.txt
 data/
 ```
 
 各文件作用：
 
 - `main_modular.py`：本地命令行测试入口。
-- `modules/slide/slide_parser.py`：负责加载 PDF、保存 deck 元数据、渲染 slide 图片、提取 PDF 原生文本。
-- `modules/slide/aoi_manager.py`：负责生成 AOI、合并文本块、保存 AOI manifest、手动新增/修改/删除 AOI、输出 gaze/tutor payload。
-- `modules/slide/ocr.py`：负责 EasyOCR fallback，以及统一的 `TextBox` 数据结构。
+- `modules/slide/slide_parser.py`：加载 PDF、保存 deck 元数据、渲染 slide 图片、提取 PDF 原生文本。
+- `modules/slide/aoi_manager.py`：生成 AOI、合并文本块、保存 AOI manifest、手动新增/修改/删除 AOI、输出 gaze/tutor payload。
+- `modules/slide/ocr.py`：EasyOCR fallback，以及统一的 `TextBox` 数据结构。
 - `data/`：运行时数据目录，保存上传 PDF、渲染图片、deck metadata 和 AOI manifest。
 
 ## 安装依赖
 
-进入项目目录：
-
 ```bash
 cd /Users/herry/code/slide_aoi_system_fixed
-```
-
-安装依赖：
-
-```bash
-pip install PyMuPDF easyocr pillow
+pip install -r requirements.txt
 ```
 
 ## 本地运行
@@ -56,7 +287,7 @@ data/deck_metadata.json
 data/aoi_manifest.json
 ```
 
-## 核心接口
+## 成员 1 核心代码用法
 
 ### 加载 PDF
 
@@ -67,22 +298,10 @@ parser = SlideParser()
 deck_id = parser.load_deck("/path/to/slides.pdf")
 ```
 
-返回：
-
-```python
-deck_id: str
-```
-
 ### 渲染 slide
 
 ```python
 image_path = parser.render_slide(deck_id, slide_id=2)
-```
-
-返回：
-
-```python
-image_path: str
 ```
 
 ### 处理 slide 并生成 AOI
@@ -114,22 +333,10 @@ slide_data = aoi_manager.process_slide(deck_id, slide_id=2)
 text = aoi_manager.get_slide_text(deck_id, slide_id=2)
 ```
 
-返回：
-
-```python
-str
-```
-
 ### 获取 AOI 列表
 
 ```python
 aois = aoi_manager.get_slide_aois(deck_id, slide_id=2)
-```
-
-返回：
-
-```python
-list[dict]
 ```
 
 ### 手动修改 AOI
@@ -164,7 +371,7 @@ new_aoi = aoi_manager.add_aoi(
 aoi_manager.delete_aoi(deck_id, slide_id=2, aoi_id="center_table")
 ```
 
-## 主要处理逻辑
+## 成员 1 处理逻辑
 
 ```text
 1. load_deck()
@@ -222,16 +429,6 @@ EasyOCR 只作为 fallback：
 - `pdf_semantic_block_*`：由 PDF 原生文本生成的语义 AOI。
 - `ocr_text_block_*`：由 EasyOCR fallback 生成的 OCR 文本块 AOI。
 
-## group、children 和 confidence
-
-`pdf_semantic_block_*` 是合并后的学习单元，也就是 group。
-
-`children` 是 group 内部由哪些原始文本框合并而来，主要用于 debug。
-
-`group_confidence` 表示系统认为这些文本应该合并成一个 AOI 的置信度。
-
-正式给其他模块时，一般不需要使用 `children`。
-
 ## 输出给 gaze 模块
 
 ```python
@@ -253,11 +450,7 @@ payload = aoi_manager.get_gaze_payload(deck_id, slide_id=2)
 }
 ```
 
-gaze 模块只需要：
-
-- `aoi_id`
-- `bbox`
-- `type`
+gaze 模块只需要 `aoi_id`、`bbox` 和 `type`。
 
 ## 输出给 tutor 模块
 
@@ -281,38 +474,42 @@ payload = aoi_manager.get_tutor_payload(deck_id, slide_id=2)
 }
 ```
 
-tutor 模块主要使用：
+tutor 模块主要使用整页文本 `ocr_text`、每个 AOI 的 `type` 和 `text`。
 
-- 整页文本 `ocr_text`
-- 每个 AOI 的 `type`
-- 每个 AOI 的 `text`
+## 集成时间安排
 
-## 当前满足的要求
+| 阶段 | 时间 | 目标 | 负责人 |
+| --- | --- | --- | --- |
+| Phase 1 | Day 1-2 | 确定题目、system claim、related work | 全体 |
+| Phase 2 | Day 3-4 | 完成 slide viewer、AOI schema、OCR 初版 | 成员 1 |
+| Phase 3 | Day 4-6 | 完成 gaze/head pose、yawn、eye closure 初版 | 成员 2 |
+| Phase 4 | Day 6-7 | 完成 STT、intent parser、指代词检测 | 成员 3 |
+| Phase 5 | Day 7-9 | 完成 reference resolver 和 adaptive policy | 成员 3 |
+| Phase 6 | Day 9-11 | 完成 LLM Tutor 和 UI 集成 | 成员 4 |
+| Phase 7 | Day 11-13 | 完成 pilot test，修 bug | 全体 |
+| Phase 8 | Day 14+ | 正式实验、report、presentation、demo video | 全体 |
 
-当前版本已经满足成员 1 的核心要求：
+## 最终闭环
 
-- 支持上传 PDF slide；
-- 使用 PyMuPDF 渲染 slide 图片；
-- 支持 OCR 文本提取；
-- 优先使用 PyMuPDF 原生文本，EasyOCR fallback；
-- 生成规则 AOI；
-- 生成 semantic/text block AOI；
-- 支持手动修改 AOI；
-- 支持新增 AOI；
-- 支持删除 AOI；
-- 保存统一 JSON 到 `data/aoi_manifest.json`；
-- 给 gaze 模块提供 AOI 接口；
-- 给 tutor 模块提供文本接口。
+```text
+成员 1：把 slide 变成结构化 AOI
+  ↓
+成员 2：检测用户正在看哪个区域，以及是否出现 yawning / eye closure 等学习状态信号
+  ↓
+成员 3：理解用户语音意图，并融合 gaze + AOI + learning-state 判断用户想问什么
+  ↓
+成员 4：调用 LLM Tutor 生成基于 slide 的解释，并在 UI 中展示、记录和评估
+```
 
-## 当前局限
+最终系统核心能力：
 
-`right_visual_region` 只是粗略视觉区域，不是真正的图像检测。
+```text
+用户看着 slide 的某个区域，说“解释这个”
+-> 系统根据 gaze 判断目标 AOI
+-> 根据 yawning / eye closure / screen-facing 等信号判断是否需要调整回答方式
+-> 显示预测目标和置信度
+-> 用户确认或修正
+-> AI Tutor 生成 grounded explanation / quiz / summary / review suggestion
+```
 
-系统目前还不能精确自动识别：
-
-- 单独的表格；
-- 单独的公式；
-- 单独的流程图；
-- 图中每个组件的 bbox。
-
-如果后续继续升级，下一步可以加 figure/table/formula detection。
+这使项目不仅是普通的 slide QA 工具，而是一个具有 Human-Centered AI 特征的学习辅助系统。
