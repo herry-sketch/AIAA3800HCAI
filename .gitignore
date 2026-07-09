@@ -13,6 +13,15 @@ data/aoi_manifest.json
 data/slide_images/*
 data/uploaded_decks/*
 
+member1/data/deck_metadata.json
+member1/data/aoi_manifest.json
+member1/data/slide_images/*
+member1/data/uploaded_decks/*
+
 !data/.gitkeep
 !data/slide_images/.gitkeep
 !data/uploaded_decks/.gitkeep
+
+!member1/data/.gitkeep
+!member1/data/slide_images/.gitkeep
+!member1/data/uploaded_decks/.gitkeep

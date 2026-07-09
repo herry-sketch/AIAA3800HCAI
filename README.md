@@ -10,7 +10,7 @@
 -> AI Tutor 生成可解释、可纠正、可适应的学习反馈
 ```
 
-当前分支是 `member1`，负责其中的 **Slide & AOI 模块**。
+当前仓库采用按成员分文件夹的结构，其中 `member1/` 文件夹负责 **Slide & AOI 模块**。
 
 ## 四人分工
 
@@ -237,35 +237,34 @@ log_interaction(event) -> None
 render_ui_state(slide, aois, gaze, learning_state, resolved_query, response) -> None
 ```
 
-## 当前分支: member1 Slide & AOI 模块
+## member1 文件夹: Slide & AOI 模块
 
-本分支已经实现成员 1 的 Slide & AOI 系统。
+`member1/` 文件夹已经实现成员 1 的 Slide & AOI 系统。
 
 ### 当前保留代码
 
 ```text
-main_modular.py
-modules/slide/__init__.py
-modules/slide/slide_parser.py
-modules/slide/aoi_manager.py
-modules/slide/ocr.py
-README.md
-requirements.txt
-data/
+member1/main_modular.py
+member1/modules/slide/__init__.py
+member1/modules/slide/slide_parser.py
+member1/modules/slide/aoi_manager.py
+member1/modules/slide/ocr.py
+member1/requirements.txt
+member1/data/
 ```
 
 各文件作用：
 
-- `main_modular.py`：本地命令行测试入口。
-- `modules/slide/slide_parser.py`：加载 PDF、保存 deck 元数据、渲染 slide 图片、提取 PDF 原生文本。
-- `modules/slide/aoi_manager.py`：生成 AOI、合并文本块、保存 AOI manifest、手动新增/修改/删除 AOI、输出 gaze/tutor payload。
-- `modules/slide/ocr.py`：EasyOCR fallback，以及统一的 `TextBox` 数据结构。
-- `data/`：运行时数据目录，保存上传 PDF、渲染图片、deck metadata 和 AOI manifest。
+- `member1/main_modular.py`：本地命令行测试入口。
+- `member1/modules/slide/slide_parser.py`：加载 PDF、保存 deck 元数据、渲染 slide 图片、提取 PDF 原生文本。
+- `member1/modules/slide/aoi_manager.py`：生成 AOI、合并文本块、保存 AOI manifest、手动新增/修改/删除 AOI、输出 gaze/tutor payload。
+- `member1/modules/slide/ocr.py`：EasyOCR fallback，以及统一的 `TextBox` 数据结构。
+- `member1/data/`：运行时数据目录，保存上传 PDF、渲染图片、deck metadata 和 AOI manifest。
 
 ## 安装依赖
 
 ```bash
-cd /Users/herry/code/slide_aoi_system_fixed
+cd /Users/herry/code/slide_aoi_system_fixed/member1
 pip install -r requirements.txt
 ```
 
@@ -274,7 +273,7 @@ pip install -r requirements.txt
 处理 PDF 的第 2 页：
 
 ```bash
-cd /Users/herry/code/slide_aoi_system_fixed
+cd /Users/herry/code/slide_aoi_system_fixed/member1
 python main_modular.py /Users/herry/slide_aoi_system/test_slides.pdf --slide-id 2
 ```
 
