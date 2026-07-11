@@ -1,0 +1,29 @@
+camera:
+  source_type: realsense
+  device_index: 0
+  width: 1280
+  height: 720
+  fps: 30
+  use_depth: true
+  realsense_serial: null
+
+calibration:
+  profile_path: data/calibration_profiles/demo_user.json
+  dwell_seconds: 1.75
+
+gaze:
+  horizontal_threshold: 0.16
+  vertical_threshold: 0.14
+  yaw_weight: 0.015
+  pitch_weight: 0.015
+
+face_state:
+  yawn_mar_threshold: 0.33
+  yawn_min_duration_sec: 0.6
+  eyes_closed_ear_threshold: 0.19
+  head_down_pitch_threshold: 18.0
+
+learning_state:
+  repeated_attention_duration_sec: 8.0
+  repeated_attention_count_threshold: 3
+  fatigue_score_threshold: 0.58
