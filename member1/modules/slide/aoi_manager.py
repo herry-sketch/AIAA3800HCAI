@@ -9,6 +9,7 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
+from .llm_aoi import LLMAOIGenerator
 from .ocr import OCREngine, TextBox, clamp
 from .slide_parser import SlideParser
 
@@ -37,22 +38,30 @@ class SlideAOIData:
     aois: list[AOI]
     text_source: str
     auto_aoi_method: str
+    llm_aoi_status: str = "not_requested"
+    llm_aoi_error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "slide_id": self.slide_id,
             "slide_image_path": self.slide_image_path,
             "ocr_text": self.ocr_text,
             "slide_text": self.ocr_text,
             "text_source": self.text_source,
             "auto_aoi_method": self.auto_aoi_method,
+            "llm_aoi_status": self.llm_aoi_status,
             "aois": [aoi.to_dict() for aoi in self.aois],
         }
+        if self.llm_aoi_error:
+            data["llm_aoi_error"] = self.llm_aoi_error
+        return data
 
 
 class AOIManager:
-    def __init__(self, data_dir: str = "data") -> None:
+    def __init__(self, data_dir: str = "data", use_llm_aoi: bool = False) -> None:
         self.data_dir = Path(data_dir)
+        self.use_llm_aoi = use_llm_aoi
+        self.llm_aoi_generator = LLMAOIGenerator() if use_llm_aoi else None
         self.manifest_file = self.data_dir / "aoi_manifest.json"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.manifest: dict[str, dict[str, Any]] = self._load_manifest()
@@ -79,7 +88,13 @@ class AOIManager:
     def _slide_key(deck_id: str, slide_id: int) -> str:
         return f"{deck_id}:{slide_id}"
 
-    def process_slide(self, deck_id: str, slide_id: int, dpi: int = 250) -> dict[str, Any]:
+    def process_slide(
+        self,
+        deck_id: str,
+        slide_id: int,
+        dpi: int = 250,
+        use_llm_aoi: bool | None = None,
+    ) -> dict[str, Any]:
         parser = SlideParser(str(self.data_dir))
         image_path = parser.render_slide(deck_id, slide_id, dpi=dpi)
         pdf_text_boxes = parser.extract_pdf_text_boxes(deck_id, slide_id)
@@ -99,13 +114,31 @@ class AOIManager:
         slide_text = "\n".join(box.text for box in text_boxes).strip()
         rule_aois = self.generate_rule_aois(slide_text)
         self.populate_rule_aoi_text(rule_aois, auto_aois)
+        selected_auto_aois = auto_aois
+        llm_status = "not_requested"
+        llm_error = None
+
+        should_use_llm = self.use_llm_aoi if use_llm_aoi is None else use_llm_aoi
+        if should_use_llm:
+            try:
+                llm_aois = self.build_llm_guided_aois(image_path, slide_text, rule_aois, auto_aois)
+                selected_auto_aois = llm_aois
+                self.populate_rule_aoi_text(rule_aois, llm_aois)
+                auto_aoi_method = f"llm_guided_with_{auto_aoi_method}_fallback"
+                llm_status = "used"
+            except Exception as exc:
+                llm_status = "fallback_used"
+                llm_error = str(exc)
+
         slide_data = SlideAOIData(
             slide_id=slide_id,
             slide_image_path=image_path,
             ocr_text=slide_text,
-            aois=rule_aois + auto_aois,
+            aois=rule_aois + selected_auto_aois,
             text_source=text_source,
             auto_aoi_method=auto_aoi_method,
+            llm_aoi_status=llm_status,
+            llm_aoi_error=llm_error,
         )
         return self.save_slide_data(deck_id, slide_data)
 
@@ -221,6 +254,38 @@ class AOIManager:
                     )
                 )
         return aois
+
+    def build_llm_guided_aois(
+        self,
+        image_path: str,
+        slide_text: str,
+        rule_aois: list[AOI],
+        text_aois: list[AOI],
+    ) -> list[AOI]:
+        generator = self.llm_aoi_generator or LLMAOIGenerator()
+        llm_aoi_dicts = generator.generate(
+            image_path=image_path,
+            slide_text=slide_text,
+            rule_aois=[aoi.to_dict() for aoi in rule_aois],
+            text_aois=[aoi.to_dict() for aoi in text_aois],
+        )
+
+        llm_aois: list[AOI] = []
+        for item in llm_aoi_dicts:
+            bbox = [float(value) for value in item["bbox"]]
+            self._validate_bbox(bbox)
+            llm_aois.append(
+                AOI(
+                    aoi_id=str(item["aoi_id"]),
+                    bbox=bbox,
+                    type=str(item["type"]),
+                    text=str(item.get("text", "")),
+                    source="llm_guided",
+                    group_confidence=float(item.get("group_confidence", 0.70)),
+                    include_in_learning=bool(item.get("include_in_learning", True)),
+                )
+            )
+        return llm_aois
 
     def save_slide_data(self, deck_id: str, slide_data: SlideAOIData) -> dict[str, Any]:
         for aoi in slide_data.aois:
