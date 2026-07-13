@@ -8,6 +8,7 @@ and PDF/OCR text-block fallback logic.
 from __future__ import annotations
 
 import base64
+from io import BytesIO
 import json
 import os
 import re
@@ -36,16 +37,25 @@ ALLOWED_AOI_TYPES = {
 class LLMAOIConfig:
     endpoint: str | None = None
     api_key: str | None = None
-    model: str = "qwen2.5-vl-7b-instruct"
+    model: str = "gpt-4o-mini"
     timeout_sec: int = 90
     max_image_side: int = 1280
 
     @classmethod
     def from_env(cls) -> "LLMAOIConfig":
+        endpoint = os.getenv("SLIDE_AOI_LLM_ENDPOINT")
+        openai_base_url = os.getenv("OPENAI_BASE_URL")
+        if not endpoint and openai_base_url:
+            endpoint = openai_base_url.rstrip("/") + "/chat/completions"
+
+        api_key = os.getenv("SLIDE_AOI_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not endpoint and api_key:
+            endpoint = "https://api.openai.com/v1/chat/completions"
+
         return cls(
-            endpoint=os.getenv("SLIDE_AOI_LLM_ENDPOINT"),
-            api_key=os.getenv("SLIDE_AOI_LLM_API_KEY"),
-            model=os.getenv("SLIDE_AOI_LLM_MODEL", "qwen2.5-vl-7b-instruct"),
+            endpoint=endpoint,
+            api_key=api_key,
+            model=os.getenv("SLIDE_AOI_LLM_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             timeout_sec=int(os.getenv("SLIDE_AOI_LLM_TIMEOUT_SEC", "90")),
             max_image_side=int(os.getenv("SLIDE_AOI_LLM_MAX_IMAGE_SIDE", "1280")),
         )
@@ -58,7 +68,7 @@ class LLMAOIGenerator:
         self.config = config or LLMAOIConfig.from_env()
 
     def is_configured(self) -> bool:
-        return bool(self.config.endpoint)
+        return bool(self.config.endpoint and self.config.api_key)
 
     def generate(
         self,
@@ -68,7 +78,7 @@ class LLMAOIGenerator:
         text_aois: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         if not self.is_configured():
-            raise RuntimeError("SLIDE_AOI_LLM_ENDPOINT is not configured")
+            raise RuntimeError("LLM AOI API is not configured. Set OPENAI_API_KEY or SLIDE_AOI_LLM_API_KEY.")
 
         payload = self._build_payload(image_path, slide_text, rule_aois, text_aois)
         request = urllib.request.Request(
@@ -148,8 +158,30 @@ class LLMAOIGenerator:
         path = Path(image_path)
         if not path.exists():
             raise FileNotFoundError(f"Slide image does not exist: {path}")
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        image_bytes = self._compressed_image_bytes(path)
+        encoded = base64.b64encode(image_bytes).decode("ascii")
         return f"data:image/png;base64,{encoded}"
+
+    def _compressed_image_bytes(self, path: Path) -> bytes:
+        try:
+            from PIL import Image
+        except ImportError:
+            return path.read_bytes()
+
+        with Image.open(path) as image:
+            image = image.convert("RGB")
+            max_side = max(image.size)
+            if max_side > self.config.max_image_side:
+                scale = self.config.max_image_side / max_side
+                new_size = (
+                    max(1, int(image.width * scale)),
+                    max(1, int(image.height * scale)),
+                )
+                image = image.resize(new_size)
+
+            buffer = BytesIO()
+            image.save(buffer, format="PNG", optimize=True)
+            return buffer.getvalue()
 
     @staticmethod
     def _extract_message_content(raw_response: str) -> str:

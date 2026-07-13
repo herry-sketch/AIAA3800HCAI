@@ -63,9 +63,31 @@ member1/modules/slide/aoi_manager.py
 member1/main_modular.py
 ```
 
-## 环境变量
+## 使用付费 OpenAI API
 
-这个版本使用 OpenAI-compatible chat completions 接口。
+如果你现在买 OpenAI API，不需要等组员云端 endpoint。直接设置 `OPENAI_API_KEY` 即可。
+
+```bash
+export OPENAI_API_KEY="sk-your-openai-api-key"
+export SLIDE_AOI_LLM_MODEL="gpt-4o-mini"
+```
+
+然后运行：
+
+```bash
+cd /Users/herry/code/slide_aoi_system_fixed/member1
+python main_modular.py /Users/herry/slide_aoi_system/test_slides.pdf --slide-id 2 --use-llm-aoi
+```
+
+注意：
+
+- 不要把真实 API key 写进代码或提交到 GitHub。
+- 如果模型名字不可用，可以把 `SLIDE_AOI_LLM_MODEL` 换成你 API 项目里可用的 vision-capable model。
+- 默认会把 slide 图片最长边压到 `1280`，减少 token/图片成本。
+
+## 使用自定义云端 endpoint
+
+这个版本也支持 OpenAI-compatible chat completions 接口。
 
 例如你的云端模型 endpoint 是：
 
@@ -81,7 +103,24 @@ export SLIDE_AOI_LLM_MODEL="qwen2.5-vl-7b-instruct"
 export SLIDE_AOI_LLM_API_KEY="your_key_if_needed"
 ```
 
-如果 endpoint 不需要 key，可以不设置 `SLIDE_AOI_LLM_API_KEY`。
+如果是组员自己部署的 endpoint，并且不需要 key，可以设置一个占位 key：
+
+```bash
+export SLIDE_AOI_LLM_API_KEY="local"
+```
+
+## 环境变量优先级
+
+```text
+API key:
+SLIDE_AOI_LLM_API_KEY > OPENAI_API_KEY
+
+Model:
+SLIDE_AOI_LLM_MODEL > OPENAI_MODEL > gpt-4o-mini
+
+Endpoint:
+SLIDE_AOI_LLM_ENDPOINT > OPENAI_BASE_URL + /chat/completions > OpenAI official endpoint
+```
 
 ## 运行
 
@@ -126,7 +165,7 @@ LLM 失败但 fallback 成功时：
 {
   "auto_aoi_method": "pdf_text_semantic",
   "llm_aoi_status": "fallback_used",
-  "llm_aoi_error": "SLIDE_AOI_LLM_ENDPOINT is not configured"
+  "llm_aoi_error": "LLM AOI API is not configured. Set OPENAI_API_KEY or SLIDE_AOI_LLM_API_KEY."
 }
 ```
 
