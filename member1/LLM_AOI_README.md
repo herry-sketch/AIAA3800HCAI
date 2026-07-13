@@ -63,6 +63,38 @@ member1/modules/slide/aoi_manager.py
 member1/main_modular.py
 ```
 
+## 使用 Qwen / DashScope API
+
+如果你想买 Qwen API，可以直接用阿里云 DashScope 的 OpenAI-compatible 接口。你不需要等组员云端 endpoint。
+
+先在终端设置：
+
+```bash
+export DASHSCOPE_API_KEY="你的 DashScope API Key"
+export SLIDE_AOI_LLM_MODEL="qwen-vl-plus"
+```
+
+然后运行：
+
+```bash
+cd /Users/herry/code/slide_aoi_system_fixed/member1
+python main_modular.py /Users/herry/slide_aoi_system/test_slides.pdf --slide-id 2 --use-llm-aoi
+```
+
+代码会自动使用：
+
+```text
+https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+```
+
+你也可以把模型换成你 DashScope 账号里可用的其他视觉模型，例如更强或更新的 Qwen-VL 模型。
+
+注意：
+
+- 不要把真实 API key 写进代码或提交到 GitHub。
+- 默认模型是 `qwen-vl-plus`，适合先跑通。
+- 默认会把 slide 图片最长边压到 `1280`，减少图片 token 成本。
+
 ## 使用付费 OpenAI API
 
 如果你现在买 OpenAI API，不需要等组员云端 endpoint。直接设置 `OPENAI_API_KEY` 即可。
@@ -113,13 +145,13 @@ export SLIDE_AOI_LLM_API_KEY="local"
 
 ```text
 API key:
-SLIDE_AOI_LLM_API_KEY > OPENAI_API_KEY
+SLIDE_AOI_LLM_API_KEY > DASHSCOPE_API_KEY / QWEN_API_KEY > OPENAI_API_KEY
 
 Model:
-SLIDE_AOI_LLM_MODEL > OPENAI_MODEL > gpt-4o-mini
+SLIDE_AOI_LLM_MODEL > QWEN_MODEL > OPENAI_MODEL > qwen-vl-plus 或 gpt-4o-mini
 
 Endpoint:
-SLIDE_AOI_LLM_ENDPOINT > OPENAI_BASE_URL + /chat/completions > OpenAI official endpoint
+SLIDE_AOI_LLM_ENDPOINT > OPENAI_BASE_URL + /chat/completions > DashScope endpoint 或 OpenAI official endpoint
 ```
 
 ## 运行
@@ -165,7 +197,7 @@ LLM 失败但 fallback 成功时：
 {
   "auto_aoi_method": "pdf_text_semantic",
   "llm_aoi_status": "fallback_used",
-  "llm_aoi_error": "LLM AOI API is not configured. Set OPENAI_API_KEY or SLIDE_AOI_LLM_API_KEY."
+  "llm_aoi_error": "LLM AOI API is not configured. Set DASHSCOPE_API_KEY, QWEN_API_KEY, OPENAI_API_KEY, or SLIDE_AOI_LLM_API_KEY."
 }
 ```
 

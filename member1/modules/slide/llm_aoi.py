@@ -44,18 +44,28 @@ class LLMAOIConfig:
     @classmethod
     def from_env(cls) -> "LLMAOIConfig":
         endpoint = os.getenv("SLIDE_AOI_LLM_ENDPOINT")
+        qwen_api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY")
         openai_base_url = os.getenv("OPENAI_BASE_URL")
         if not endpoint and openai_base_url:
             endpoint = openai_base_url.rstrip("/") + "/chat/completions"
 
-        api_key = os.getenv("SLIDE_AOI_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
-        if not endpoint and api_key:
+        api_key = os.getenv("SLIDE_AOI_LLM_API_KEY") or qwen_api_key or os.getenv("OPENAI_API_KEY")
+        if not endpoint and qwen_api_key:
+            endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        elif not endpoint and api_key:
             endpoint = "https://api.openai.com/v1/chat/completions"
+
+        default_model = "qwen-vl-plus" if qwen_api_key else "gpt-4o-mini"
 
         return cls(
             endpoint=endpoint,
             api_key=api_key,
-            model=os.getenv("SLIDE_AOI_LLM_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            model=(
+                os.getenv("SLIDE_AOI_LLM_MODEL")
+                or os.getenv("QWEN_MODEL")
+                or os.getenv("OPENAI_MODEL")
+                or default_model
+            ),
             timeout_sec=int(os.getenv("SLIDE_AOI_LLM_TIMEOUT_SEC", "90")),
             max_image_side=int(os.getenv("SLIDE_AOI_LLM_MAX_IMAGE_SIDE", "1280")),
         )
@@ -78,7 +88,10 @@ class LLMAOIGenerator:
         text_aois: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         if not self.is_configured():
-            raise RuntimeError("LLM AOI API is not configured. Set OPENAI_API_KEY or SLIDE_AOI_LLM_API_KEY.")
+            raise RuntimeError(
+                "LLM AOI API is not configured. "
+                "Set DASHSCOPE_API_KEY, QWEN_API_KEY, OPENAI_API_KEY, or SLIDE_AOI_LLM_API_KEY."
+            )
 
         payload = self._build_payload(image_path, slide_text, rule_aois, text_aois)
         request = urllib.request.Request(
