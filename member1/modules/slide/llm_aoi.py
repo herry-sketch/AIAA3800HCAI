@@ -23,8 +23,10 @@ ALLOWED_AOI_TYPES = {
     "title",
     "text",
     "figure",
+    "diagram",
     "table",
     "formula",
+    "code",
     "caption",
     "footer",
     "axis_label",
@@ -131,7 +133,7 @@ class LLMAOIGenerator:
         return {
             "model": self.config.model,
             "temperature": 0.1,
-            "max_tokens": 1600,
+            "max_tokens": 4000,
             "messages": [
                 {
                     "role": "system",
@@ -152,11 +154,22 @@ class LLMAOIGenerator:
 
     def _prompt(self, slide_text: str, rule_aois: list[dict[str, Any]], text_aois: list[dict[str, Any]]) -> str:
         return (
-            "Generate semantic AOIs for this lecture slide.\n\n"
-            "Use the rule AOIs as guidance, but produce more meaningful learning units when possible. "
-            "Prefer grouping title + subtitle, paired concept + explanation, figure + caption, table, formula, "
-            "and diagram regions. Do not invent text that is not visible on the slide.\n\n"
-            "Allowed AOI types: title, text, figure, table, formula, caption, footer, axis_label, mixed.\n"
+            "Generate one flat list of semantic AOIs for this lecture slide.\n\n"
+            "Source roles:\n"
+            "- The slide image is the visual source of truth.\n"
+            "- Existing PDF/OCR AOIs are text and position anchors. Prefer their visible text and bbox edges.\n"
+            "- Rule AOIs are coarse layout hints only. Never return rule containers such as whole_slide, "
+            "left_block, right_block, top_region, or bottom_region.\n\n"
+            "Segmentation rules:\n"
+            "1. Return each complete sentence or independently meaningful list item as one AOI. Visual line "
+            "wrapping must not split a sentence or one output row into fragments.\n"
+            "2. Keep each code block, table, diagram, formula, and image panel as one complete visual AOI. "
+            "Do not emit its OCR lines again as separate text AOIs.\n"
+            "3. Do not create parent, child, overview, or aggregate container AOIs.\n"
+            "4. Do not return duplicate text or duplicate visual objects.\n"
+            "5. Include visible content found by image OCR even when it is absent from PDF text.\n"
+            "6. Do not invent or paraphrase visible text. A visual-only diagram may use a short description.\n\n"
+            "Allowed AOI types: title, text, figure, diagram, table, formula, code, caption, footer, axis_label, mixed.\n"
             "Each AOI must include: aoi_id, bbox, type, text, confidence.\n"
             "Use aoi_id prefix 'llm_aoi_'. confidence must be between 0 and 1.\n"
             "Return exactly this JSON shape:\n"
@@ -164,7 +177,7 @@ class LLMAOIGenerator:
             "\"type\":\"text\",\"text\":\"...\",\"confidence\":0.85}]}\n\n"
             f"Slide text:\n{slide_text[:5000]}\n\n"
             f"Rule AOIs:\n{json.dumps(rule_aois, ensure_ascii=False)}\n\n"
-            f"Existing text AOIs from PDF/OCR:\n{json.dumps(text_aois, ensure_ascii=False)}\n"
+            f"Grounding AOIs from PDF and image-region OCR:\n{json.dumps(text_aois, ensure_ascii=False)}\n"
         )
 
     def _image_data_url(self, image_path: str) -> str:
@@ -224,9 +237,40 @@ class LLMAOIGenerator:
             return json.loads(cleaned)
         except json.JSONDecodeError:
             match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
-            if not match:
-                raise ValueError("LLM AOI response did not contain JSON")
-            return json.loads(match.group(0))
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except json.JSONDecodeError:
+                    pass
+
+        recovered = LLMAOIGenerator._recover_complete_aois(cleaned)
+        if recovered:
+            return {"aois": recovered}
+        raise ValueError("LLM AOI response did not contain recoverable JSON")
+
+    @staticmethod
+    def _recover_complete_aois(text: str) -> list[dict[str, Any]]:
+        """Recover complete AOI objects from a malformed or truncated array."""
+        array_match = re.search(r'["\']aois["\']\s*:\s*\[', text)
+        if not array_match:
+            return []
+
+        decoder = json.JSONDecoder()
+        cursor = array_match.end()
+        recovered: list[dict[str, Any]] = []
+        while cursor < len(text):
+            object_start = text.find("{", cursor)
+            if object_start == -1:
+                break
+            try:
+                value, end = decoder.raw_decode(text, object_start)
+            except json.JSONDecodeError:
+                cursor = object_start + 1
+                continue
+            if isinstance(value, dict):
+                recovered.append(value)
+            cursor = end
+        return recovered
 
     def _validate_aois(self, aois: list[Any]) -> list[dict[str, Any]]:
         validated: list[dict[str, Any]] = []
@@ -266,7 +310,25 @@ class LLMAOIGenerator:
 
         if not validated:
             raise ValueError("LLM AOI response contained no valid AOIs")
-        return validated
+        return self._dedupe_and_renumber(validated)
+
+    @staticmethod
+    def _dedupe_and_renumber(aois: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Remove exact text duplicates and guarantee stable, unique LLM IDs."""
+        unique: list[dict[str, Any]] = []
+        seen_text: set[str] = set()
+        for aoi in aois:
+            normalized = " ".join(
+                re.sub(r"[^\w]+", " ", str(aoi.get("text", "")).casefold()).split()
+            )
+            if normalized and normalized in seen_text:
+                continue
+            if normalized:
+                seen_text.add(normalized)
+            unique.append(aoi)
+        for index, aoi in enumerate(unique, start=1):
+            aoi["aoi_id"] = f"llm_aoi_{index}"
+        return unique
 
     @staticmethod
     def _valid_bbox(value: Any) -> bool:

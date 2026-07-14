@@ -154,6 +154,42 @@ class SlideParser:
 
         return sorted(boxes, key=lambda box: (box.y_min, box.x_min))
 
+    def extract_pdf_image_boxes(self, deck_id: str, slide_id: int) -> list[list[float]]:
+        """Return normalized bounding boxes for raster images embedded on a page."""
+        deck_info = self.metadata.get(deck_id)
+        if deck_info is None:
+            raise ValueError(f"Unknown deck_id: {deck_id}")
+
+        pdf_path = Path(str(deck_info["pdf_path"]))
+        document = fitz.open(str(pdf_path))
+        boxes: list[list[float]] = []
+        try:
+            page = document.load_page(slide_id - 1)
+            page_width = float(page.rect.width)
+            page_height = float(page.rect.height)
+            for block in page.get_text("dict").get("blocks", []):
+                if block.get("type") != 1 or not block.get("bbox"):
+                    continue
+                x_min, y_min, x_max, y_max = [float(value) for value in block["bbox"]]
+                bbox = [
+                    clamp(x_min / page_width),
+                    clamp(y_min / page_height),
+                    clamp(x_max / page_width),
+                    clamp(y_max / page_height),
+                ]
+                area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+                is_footer_asset = bbox[1] >= 0.82 and (bbox[3] - bbox[1]) <= 0.08
+                if (
+                    bbox[2] > bbox[0]
+                    and bbox[3] > bbox[1]
+                    and 0.002 <= area <= 0.75
+                    and not is_footer_asset
+                ):
+                    boxes.append(bbox)
+        finally:
+            document.close()
+        return boxes
+
     def get_page_count(self, deck_id: str) -> int:
         deck_info = self.metadata.get(deck_id)
         if deck_info is None:
@@ -170,4 +206,3 @@ def load_deck(pdf_path: str) -> str:
 
 def render_slide(deck_id: str, slide_id: int) -> str:
     return SlideParser().render_slide(deck_id, slide_id)
-

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from PIL import Image
@@ -116,3 +117,46 @@ class OCREngine:
     def extract_text(self, image_path: str) -> str:
         return "\n".join(box.text for box in self.extract_boxes(image_path)).strip()
 
+    def extract_region_boxes(
+        self,
+        image_path: str,
+        region: list[float],
+        min_confidence: float = 0.25,
+    ) -> list[TextBox]:
+        """OCR one normalized image region and map boxes back to page coordinates."""
+        if len(region) != 4:
+            raise ValueError("region must contain [x_min, y_min, x_max, y_max]")
+        x_min, y_min, x_max, y_max = [clamp(float(value)) for value in region]
+        if x_min >= x_max or y_min >= y_max:
+            raise ValueError("region must have positive width and height")
+
+        with Image.open(image_path) as image:
+            width, height = image.size
+            crop = image.crop(
+                (
+                    int(x_min * width),
+                    int(y_min * height),
+                    int(x_max * width),
+                    int(y_max * height),
+                )
+            )
+            with NamedTemporaryFile(suffix=".png") as temporary:
+                crop.save(temporary.name)
+                local_boxes = self.extract_boxes(temporary.name, min_confidence=min_confidence)
+
+        region_width = x_max - x_min
+        region_height = y_max - y_min
+        return [
+            TextBox(
+                text=box.text,
+                bbox=[
+                    x_min + box.x_min * region_width,
+                    y_min + box.y_min * region_height,
+                    x_min + box.x_max * region_width,
+                    y_min + box.y_max * region_height,
+                ],
+                confidence=box.confidence,
+                source="ocr_image",
+            )
+            for box in local_boxes
+        ]

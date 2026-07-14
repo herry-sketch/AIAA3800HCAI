@@ -13,18 +13,19 @@ PyMuPDF 原生文本优先
 -> PDF/OCR text block AOI
 ```
 
-升级后：
+升级后的融合流程：
 
 ```text
-PyMuPDF 原生文本优先
--> EasyOCR fallback
--> rule AOI
--> PDF/OCR text block AOI
--> 可选 LLM/VLM guided AOI
--> 如果 LLM 失败，自动 fallback 到原来的 rule + PDF/OCR AOI
+PDF 原生文字 + 嵌入图片区域 OCR
+-> 合并并去重文字和坐标
+-> rule AOI 只提供粗粒度布局提示
+-> LLM/VLM 生成一套扁平语义 AOI
+-> PDF/OCR 坐标锚定、冲突消解、内容覆盖检查
+-> 检查失败时整页 fallback 到 PDF/OCR AOI
+-> PDF/OCR 也为空时才使用 rule AOI
 ```
 
-所以这个升级不会破坏你已经能跑的 MVP。
+最终输出只保留一套 AOI，不会把 rule、PDF/OCR 和 LLM 框叠加输出。
 
 ## 显存要求
 
@@ -201,7 +202,7 @@ LLM 失败但 fallback 成功时：
 }
 ```
 
-这说明系统没有崩，而是退回到了原来的规则/PDF/OCR AOI。
+这说明系统没有崩，而是整页退回到 PDF/OCR AOI；只有 PDF/OCR 也为空时才使用 rule AOI。
 
 ## 为什么这样设计
 
@@ -211,7 +212,7 @@ LLM/VLM 的优势：
 - 可以把视觉区域和文本解释合成更自然的学习单元；
 - 可以减少固定 6 个 rule AOI 的局限。
 
-保留 rule fallback 的原因：
+保留 PDF/OCR 和 rule fallback 的原因：
 
 - LLM 输出可能格式错；
 - 云端模型可能超时；
@@ -221,6 +222,7 @@ LLM/VLM 的优势：
 所以最终策略是：
 
 ```text
-LLM 提升质量
-Rule/PDF/OCR 保证系统永远有可用输出
+PDF/OCR 提供文字与坐标
+Rule 只约束布局并作为最后 fallback
+LLM 负责最终语义划分
 ```
