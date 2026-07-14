@@ -1,0 +1,17 @@
+{
+  "slide_id": 5,
+  "aois": [
+    {
+      "aoi_id": "left_text",
+      "bbox": [0.05, 0.18, 0.48, 0.78],
+      "type": "text",
+      "text": "SHAP explains model predictions by assigning contribution values to input features."
+    },
+    {
+      "aoi_id": "right_figure",
+      "bbox": [0.55, 0.18, 0.95, 0.78],
+      "type": "figure",
+      "text": "SHAP force plot showing feature contributions."
+    }
+  ]
+}
