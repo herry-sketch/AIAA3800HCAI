@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+model1/logs/
+model1/models/*.pt
+model1/models/*.task
+!model1/models/.gitkeep
+
+model2/models/*.pth
+model2/models/*.task
+!model2/models/.gitkeep

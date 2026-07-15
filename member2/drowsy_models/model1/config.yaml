@@ -1,0 +1,73 @@
+camera:
+  index: 0
+  width: 1280
+  height: 720
+  fps: 30
+  mirror: true
+
+models:
+  face_landmarker_path: models/face_landmarker.task
+  yolo_local_path: models/best.pt
+  yolo_repo_id: mosesb/drowsiness-detection-yolo-cls
+  yolo_filename: best.pt
+  yolo_imgsz: 224
+  yolo_device: 0
+  yolo_half: true
+  yolo_every_n_frames: 3
+
+mediapipe:
+  num_faces: 1
+  min_face_detection_confidence: 0.5
+  min_face_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+
+face_crop:
+  horizontal_margin: 0.20
+  top_margin: 0.20
+  bottom_margin: 0.25
+  min_face_width_pixels: 120
+  min_face_height_pixels: 120
+
+calibration:
+  enabled: true
+  duration_seconds: 15
+  default_eye_closed_threshold: 0.65
+  default_yawn_threshold: 0.70
+
+temporal:
+  short_window_seconds: 5
+  long_window_seconds: 30
+  yolo_ema_alpha: 0.20
+  yolo_stale_seconds: 0.50
+  face_missing_unknown_seconds: 0.70
+
+thresholds:
+  suspect_yolo_probability: 0.65
+  drowsy_yolo_probability: 0.75
+  critical_yolo_probability: 0.90
+
+  suspect_perclos: 0.15
+  drowsy_perclos: 0.25
+
+  long_eye_closure_seconds: 0.80
+  critical_eye_closure_seconds: 1.50
+
+  yawn_min_seconds: 1.20
+  yawn_event_gap_seconds: 2.00
+
+  head_down_delta_degrees: 15
+  head_down_min_seconds: 1.50
+
+  recovery_yolo_probability: 0.45
+  recovery_seconds: 2.00
+
+alert:
+  enabled: false
+  cooldown_seconds: 3
+  enable_audio: false
+
+logging:
+  enabled: true
+  output_directory: logs
+  save_video: false
+  save_face_crops: false
